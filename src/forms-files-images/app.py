@@ -38,10 +38,34 @@ except OSError:
 
 
 # Create models
-class File(db.Model):
+class AlertStrategy(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.Unicode(64))
+
+    speed_lower = db.Column(db.Unicode(64))
+    speed_upper = db.Column(db.Unicode(64))
+
+    vol_name = db.Column(db.Unicode(128))
+    light_name = db.Column(db.Unicode(128))
+
+    def __unicode__(self):
+        return self.name
+
+
+class VolFile(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.Unicode(64))
     path = db.Column(db.Unicode(128))
+
+    def __unicode__(self):
+        return self.name
+
+
+class LightStrategy(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.Unicode(64))
+    period = db.Column(db.Unicode(64))
+    light_on = db.Column(db.Unicode(64))
 
     def __unicode__(self):
         return self.name
@@ -78,7 +102,7 @@ class Page(db.Model):
 
 
 # Delete hooks for models, delete files if models are getting deleted
-@listens_for(File, 'after_delete')
+@listens_for(AlertStrategy, 'after_delete')
 def del_file(mapper, connection, target):
     if target.path:
         try:
@@ -128,7 +152,55 @@ class PageView(sqla.ModelView):
     edit_template = 'edit_page.html'
 
 
-class FileView(sqla.ModelView):
+class AlertStrategyView(sqla.ModelView):
+    # Override form field to use Flask-Admin FileUploadField
+    can_view_details = True
+    column_list = ['name', 'vol_name', 'light_name']
+    column_labels = {
+        'name': '策略名称',
+        'vol_name': '关联资源1',
+        'light_name': '关联资源2',
+        'speed_lower': '区间下限',
+        'speed_upper': '区间上限'
+    }
+    form_overrides = {
+        'path': form.FileUploadField
+    }
+
+    # Pass additional parameters to 'path' to FileUploadField constructor
+    form_args = {
+        'path': {
+            'label': 'AlertStrategy',
+            'base_path': file_path,
+            'allow_overwrite': False
+        }
+    }
+
+
+class LightStrategyView(sqla.ModelView):
+    # Override form field to use Flask-Admin FileUploadField
+    can_view_details = True
+    column_list = ['name', 'period', 'light_on']
+    column_labels = {
+        'name': '策略名称',
+        'period': '周期',
+        'light_on': '时长'
+    }
+    form_overrides = {
+        'path': form.FileUploadField
+    }
+
+    # Pass additional parameters to 'path' to FileUploadField constructor
+    form_args = {
+        'path': {
+            'label': 'LightStrategy',
+            'base_path': file_path,
+            'allow_overwrite': False
+        }
+    }
+
+
+class VolFileView(sqla.ModelView):
     # Override form field to use Flask-Admin FileUploadField
     form_overrides = {
         'path': form.FileUploadField
@@ -199,14 +271,21 @@ def index():
 
 
 # Create admin
-admin = Admin(app, 'Example: Forms', template_mode='bootstrap4')
+# admin = Admin(app, '配置平台', template_mode='bootstrap4')
+admin = Admin(app, '配置平台', template_mode='bootstrap4')
+
 
 # Add views
-admin.add_view(FileView(File, db.session))
-admin.add_view(ImageView(Image, db.session))
-admin.add_view(UserView(User, db.session))
-admin.add_view(PageView(Page, db.session))
-admin.add_view(rediscli.RedisCli(Redis()))
+admin.add_view(AlertStrategyView(AlertStrategy, db.session, name='策略配置'))
+admin.add_view(VolFileView(VolFile, db.session))
+admin.add_view(LightStrategyView(LightStrategy, db.session))
+
+# admin.add_view(ImageView(Image, db.session, name='资源上传'))
+# admin.add_view(UserView(User, db.session))
+# admin.add_view(PageView(Page, db.session))
+
+
+# admin.add_view(rediscli.RedisCli(Redis()))
 
 
 def build_sample_db():
@@ -277,10 +356,27 @@ def build_sample_db():
         db.session.add(image)
 
     for i in [1, 2, 3]:
-        file = File()
-        file.name = "Example " + str(i)
-        file.path = "example_" + str(i) + ".pdf"
-        db.session.add(file)
+        alertstrategy = AlertStrategy()
+        alertstrategy.name = "策略 " + str(i)
+        alertstrategy.speed_lower = str(i * 10)
+        alertstrategy.speed_upper = str(i * 10 + 10)
+        alertstrategy.vol_name = "vol_example_" + str(i) + ".mp3"
+        alertstrategy.light_name = "light_example_" + str(i) + ".txt"
+
+        db.session.add(alertstrategy)
+
+        volfile = VolFile()
+        volfile.name = "vol_example_ " + str(i)
+        volfile.path = "file/vol_example_2023_02_05" + str(i) + ".mp3"
+
+        db.session.add(volfile)
+
+        lightstrategy = LightStrategy()
+        lightstrategy.name = "策略 " + str(i)
+        lightstrategy.period = str(i * 20) + "s"
+        lightstrategy.light_on = str(i * 10) + "s"
+
+        db.session.add(lightstrategy)
 
     sample_text = "<h2>This is a test</h2>" + \
                   "<p>Create HTML content in a text area field with the help of <i>WTForms</i> and <i>CKEditor</i>.</p>"
