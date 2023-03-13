@@ -13,3 +13,4 @@ if not os.path.exists(database_path):
 if __name__ == '__main__':
     # Start app
     app.run(debug=True)
+db

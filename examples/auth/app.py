@@ -8,12 +8,10 @@ import flask_admin
 from flask_admin.contrib import sqla
 from flask_admin import helpers as admin_helpers
 
-
 # Create Flask application
 app = Flask(__name__)
 app.config.from_pyfile('config.py')
 db = SQLAlchemy(app)
-
 
 # Define models
 roles_users = db.Table(
@@ -58,7 +56,7 @@ class MyModelView(sqla.ModelView):
         return (current_user.is_active and
                 current_user.is_authenticated and
                 current_user.has_role('superuser')
-        )
+                )
 
     def _handle_view(self, name, **kwargs):
         """
@@ -72,10 +70,12 @@ class MyModelView(sqla.ModelView):
                 # login
                 return redirect(url_for('security.login', next=request.url))
 
+
 # Flask views
 @app.route('/')
 def index():
     return render_template('index.html')
+
 
 # Create admin
 admin = flask_admin.Admin(
@@ -88,6 +88,7 @@ admin = flask_admin.Admin(
 # Add model views
 admin.add_view(MyModelView(Role, db.session))
 admin.add_view(MyModelView(User, db.session))
+
 
 # define a context processor for merging flask-admin's template context into the
 # flask-security views.
@@ -149,6 +150,7 @@ def build_sample_db():
             )
         db.session.commit()
     return
+
 
 if __name__ == '__main__':
 

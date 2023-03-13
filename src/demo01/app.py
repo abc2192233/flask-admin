@@ -1,19 +1,29 @@
 import os
 import os.path as op
+import time
+from multiprocessing import Process
 
-from flask import Flask, url_for, redirect, render_template, request
-from flask_sqlalchemy import SQLAlchemy
-from wtforms import form, fields, validators
-from flask_admin import form as form1
-import flask_admin as admin
 import flask_login as login
-from flask_admin.contrib import sqla
-from flask_admin import helpers, expose
+from flask import Flask, redirect
+from flask_admin import expose
+from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
+from wtforms import form, fields, validators
+from flask_admin import helpers, expose
+import flask_login as login
+from flask import url_for, redirect, request
+import os.path as op
+import flask_admin as admin
+from flask_admin import form as form1
+from flask_admin import helpers, expose
+from flask_admin.contrib import sqla
+
+import flask_admin as admin
+from src.demo01.views.views import AlertStrategyView, VolFileView, LightStrategyView
+from src.monitor.check import check_data
 
 # Create Flask application
 app = Flask(__name__, static_folder='files')
-file_path = op.join(op.dirname(__file__), 'files')
 
 # Create dummy secrey key so we can use sessions
 app.config['SECRET_KEY'] = '123456790'
@@ -36,9 +46,6 @@ class User(db.Model):
     email = db.Column(db.String(120))
     password = db.Column(db.String(64))
 
-    # Flask-Login integration
-    # NOTE: is_authenticated, is_active, and is_anonymous
-    # are methods in Flask-Login < 0.3.0
     @property
     def is_authenticated(self):
         return True
@@ -100,85 +107,6 @@ class LightStrategy(db.Model):
         return True
 
 
-class AlertStrategyView(sqla.ModelView):
-    # Override form field to use Flask-Admin FileUploadField
-    can_view_details = True
-    column_list = ['name', 'vol_name', 'light_name']
-    column_labels = {
-        'name': '策略名称',
-        'vol_name': '关联资源1',
-        'light_name': '关联资源2',
-        'speed_lower': '区间下限',
-        'speed_upper': '区间上限'
-    }
-    form_overrides = {
-        'path': form1.FileUploadField
-    }
-
-    # Pass additional parameters to 'path' to FileUploadField constructor
-    form_args = {
-        'path': {
-            'label': 'AlertStrategy',
-            'base_path': file_path,
-            'allow_overwrite': False
-        }
-    }
-
-    def is_accessible(self):
-        return login.current_user.is_authenticated
-
-
-class LightStrategyView(sqla.ModelView):
-    # Override form field to use Flask-Admin FileUploadField
-    can_view_details = True
-    column_list = ['name', 'period', 'light_on']
-    column_labels = {
-        'name': '策略名称',
-        'period': '周期',
-        'light_on': '时长'
-    }
-    form_overrides = {
-        'path': form1.FileUploadField
-    }
-
-    # Pass additional parameters to 'path' to FileUploadField constructor
-    form_args = {
-        'path': {
-            'label': 'LightStrategy',
-            'base_path': file_path,
-            'allow_overwrite': False
-        }
-    }
-
-    def is_accessible(self):
-        return login.current_user.is_authenticated
-
-
-class VolFileView(sqla.ModelView):
-    # Override form field to use Flask-Admin FileUploadField
-    column_list = ['name', 'path']
-    column_labels = {
-        'name': '资源名称',
-        'path': '资源路径'
-    }
-
-    form_overrides = {
-        'path': form1.FileUploadField
-    }
-
-    # Pass additional parameters to 'path' to FileUploadField constructor
-    form_args = {
-        'path': {
-            'label': 'File',
-            'base_path': file_path,
-            'allow_overwrite': False
-        }
-    }
-
-    def is_accessible(self):
-        return login.current_user.is_authenticated
-
-
 # Define login and registration forms (for flask-login)
 class LoginForm(form.Form):
     login = fields.StringField(validators=[validators.InputRequired()])
@@ -198,6 +126,40 @@ class LoginForm(form.Form):
 
     def get_user(self):
         return db.session.query(User).filter_by(login=self.login.data).first()
+
+
+class MyAdminIndexView(admin.AdminIndexView):
+
+    @expose('/')
+    def index(self):
+        if not login.current_user.is_authenticated:
+            return redirect(url_for('.login_view'))
+        return super(MyAdminIndexView, self).index()
+
+    @expose('/login/', methods=('GET', 'POST'))
+    def login_view(self):
+        # handle user login
+        form = LoginForm(request.form)
+        if helpers.validate_form_on_submit(form):
+            user = form.get_user()
+            login.login_user(user)
+
+        if login.current_user.is_authenticated:
+            app.config['process'] = Process(target=check_data)
+            if not app.config['process'].is_alive():
+                app.config['process'].start()
+            return redirect(url_for('.index'))
+        # link = '<p>Don\'t have an account? <a href="' + url_for('.register_view') + '">Click here to register.</a></p>'
+        self._template_args['form'] = form
+        # self._template_args['link'] = link
+        return super(MyAdminIndexView, self).index()
+
+    @expose('/logout/')
+    def logout_view(self):
+        login.logout_user()
+        if app.config['process'].is_alive():
+            app.config['process'].terminate()
+        return redirect(url_for('.index'))
 
 
 class RegistrationForm(form.Form):
@@ -221,64 +183,6 @@ def init_login():
         return db.session.query(User).get(user_id)
 
 
-# Create customized model view class
-class MyModelView(sqla.ModelView):
-
-    def is_accessible(self):
-        return login.current_user.is_authenticated
-
-
-# Create customized index view class that handles login & registration
-class MyAdminIndexView(admin.AdminIndexView):
-
-    @expose('/')
-    def index(self):
-        if not login.current_user.is_authenticated:
-            return redirect(url_for('.login_view'))
-        return super(MyAdminIndexView, self).index()
-
-    @expose('/login/', methods=('GET', 'POST'))
-    def login_view(self):
-        # handle user login
-        form = LoginForm(request.form)
-        if helpers.validate_form_on_submit(form):
-            user = form.get_user()
-            login.login_user(user)
-
-        if login.current_user.is_authenticated:
-            return redirect(url_for('.index'))
-        # link = '<p>Don\'t have an account? <a href="' + url_for('.register_view') + '">Click here to register.</a></p>'
-        self._template_args['form'] = form
-        # self._template_args['link'] = link
-        return super(MyAdminIndexView, self).index()
-
-    # @expose('/register/', methods=('GET', 'POST'))
-    # def register_view(self):
-    #     form = RegistrationForm(request.form)
-    #     if helpers.validate_form_on_submit(form):
-    #         user = User()
-    #
-    #         form.populate_obj(user)
-    #         # we hash the users password to avoid saving it as plaintext in the db,
-    #         # remove to use plain text:
-    #         user.password = generate_password_hash(form.password.data)
-    #
-    #         db.session.add(user)
-    #         db.session.commit()
-    #
-    #         login.login_user(user)
-    #         return redirect(url_for('.index'))
-    #     link = '<p>Already have an account? <a href="' + url_for('.login_view') + '">Click here to log in.</a></p>'
-    #     self._template_args['form'] = form
-    #     self._template_args['link'] = link
-    #     return super(MyAdminIndexView, self).index()
-
-    @expose('/logout/')
-    def logout_view(self):
-        login.logout_user()
-        return redirect(url_for('.index'))
-
-
 # Flask views
 @app.route('/')
 def index():
@@ -295,7 +199,6 @@ admin = admin.Admin(app, '配置平台', index_view=MyAdminIndexView(), base_tem
                     template_mode='bootstrap4')
 
 # Add view
-# admin.add_view(MyModelView(User, db.session))
 admin.add_view(AlertStrategyView(AlertStrategy, db.session))
 admin.add_view(VolFileView(VolFile, db.session))
 admin.add_view(LightStrategyView(LightStrategy, db.session))
@@ -305,9 +208,6 @@ def build_sample_db():
     """
     Populate a small db with some example entries.
     """
-
-    import string
-    import random
 
     db.drop_all()
     db.create_all()
@@ -352,5 +252,5 @@ if __name__ == '__main__':
         with app.app_context():
             build_sample_db()
 
-    # Start app
-    app.run(debug=True)
+    app.config['process'] = Process(target=check_data)
+    app.run(processes=1)
