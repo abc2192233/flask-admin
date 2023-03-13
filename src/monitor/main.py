@@ -2,6 +2,7 @@ import socket
 import sqlite3
 import time
 import threading
+from typing import Dict
 
 IP = '127.0.0.1'
 PORT = 12345
@@ -32,15 +33,23 @@ def handle_client(client_socket):
         sock.send(b'Hello')
 
 
-if __name__ == '__main__':
+def load_config() -> Dict:
+    config = dict()
     conn = sqlite3.connect('../demo01/sample_db.sqlite')
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM alert_strategy")
     alert_strategy = cursor.fetchall()
+    config['alert_strategy'] = alert_strategy
 
     cursor.execute("SELECT * FROM vol_file")
     light_strategy = cursor.fetchall()
+    config['light_strategy'] = light_strategy
 
     conn.close()
 
-    print(alert_strategy, light_strategy)
+    return config
+
+
+if __name__ == '__main__':
+
+    print(load_config())
