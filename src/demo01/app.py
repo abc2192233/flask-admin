@@ -5,6 +5,9 @@ from multiprocessing import Process
 
 import flask_login as login
 from flask import Flask, redirect
+from sqlalchemy.orm import relationship, backref
+
+from examples.babel.app import Post
 from flask_admin import expose
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -19,8 +22,8 @@ from flask_admin import helpers, expose
 from flask_admin.contrib import sqla
 
 import flask_admin as admin
-from src.demo01.views.views import AlertStrategyView, VolFileView, LightStrategyView
-from src.monitor.check import check_data
+
+file_path = op.join(op.dirname(__file__), 'files')
 
 # Create Flask application
 app = Flask(__name__, static_folder='files')
@@ -69,11 +72,20 @@ class AlertStrategy(db.Model):
     speed_lower = db.Column(db.Unicode(64))
     speed_upper = db.Column(db.Unicode(64))
 
-    vol_name = db.Column(db.Unicode(128))
-    light_name = db.Column(db.Unicode(128))
+    # vol_name = db.Column(db.Unicode(128))
+    # vol_name = db.Column(db.Unicode(64), db.ForeignKey('vol_file.name'))
+
+    vol_id = db.Column(db.Integer, db.ForeignKey('vol_file.id'))
+    vol_rel = relationship("VolFile", backref=backref("关联vol策略", uselist=False))
+
+    light_id = db.Column(db.Integer, db.ForeignKey('light_strategy.id'))
+    light_rel = relationship("LightStrategy", backref=backref("关联lg策略", uselist=False))
 
     def __unicode__(self):
         return self.name
+
+    def __repr__(self):
+        return "<AlertStrategy(alert_strategy:%s)>" % self.name
 
     @property
     def is_authenticated(self):
@@ -88,6 +100,9 @@ class VolFile(db.Model):
     def __unicode__(self):
         return self.name
 
+    def __repr__(self):
+        return "<VolFile(vol_file:%s)>" % self.name
+
     @property
     def is_authenticated(self):
         return True
@@ -101,6 +116,9 @@ class LightStrategy(db.Model):
 
     def __unicode__(self):
         return self.name
+
+    def __repr__(self):
+        return "<LightStrategy(light_strategy:%s)>" % self.name
 
     @property
     def is_authenticated(self):
@@ -128,6 +146,84 @@ class LoginForm(form.Form):
         return db.session.query(User).filter_by(login=self.login.data).first()
 
 
+class AlertStrategyView(sqla.ModelView):
+    # Override form field to use Flask-Admin FileUploadField
+    # form_choices = {
+    #                 'vol_name': [('bw', VolFile.name)],
+    #                 }
+    form_create_rules = ['name', 'speed_lower', 'speed_upper', 'vol_rel', 'light_rel']
+
+    can_view_details = True
+    column_list = ['name', 'vol_rel', 'light_rel']
+    column_labels = {
+        'name': '策略名称',
+        'vol_rel': '关联资源1',
+        'light_rel': '关联资源2',
+        'speed_lower': '区间下限',
+        'speed_upper': '区间上限'
+    }
+
+    # Pass additional parameters to 'path' to FileUploadField constructor
+    form_args = {
+        'path': {
+            'label': 'AlertStrategy',
+            'base_path': file_path,
+            'allow_overwrite': False
+        }
+    }
+
+    def is_accessible(self):
+        return login.current_user.is_authenticated
+
+
+class LightStrategyView(sqla.ModelView):
+    # Override form field to use Flask-Admin FileUploadField
+    can_view_details = True
+    column_list = ['name', 'period', 'light_on']
+    column_labels = {
+        'name': '策略名称',
+        'period': '周期',
+        'light_on': '时长'
+    }
+
+    # Pass additional parameters to 'path' to FileUploadField constructor
+    form_args = {
+        'path': {
+            'label': 'LightStrategy',
+            'base_path': file_path,
+            'allow_overwrite': False
+        }
+    }
+
+    def is_accessible(self):
+        return login.current_user.is_authenticated
+
+
+class VolFileView(sqla.ModelView):
+    # Override form field to use Flask-Admin FileUploadField
+    column_list = ['name', 'path']
+    column_labels = {
+        'name': '资源名称',
+        'path': '资源路径'
+    }
+
+    form_overrides = {
+        'path': form1.FileUploadField
+    }
+
+    # Pass additional parameters to 'path' to FileUploadField constructor
+    form_args = {
+        'path': {
+            'label': 'File',
+            'base_path': file_path,
+            'allow_overwrite': False
+        }
+    }
+
+    def is_accessible(self):
+        return login.current_user.is_authenticated
+
+
 class MyAdminIndexView(admin.AdminIndexView):
 
     @expose('/')
@@ -145,9 +241,9 @@ class MyAdminIndexView(admin.AdminIndexView):
             login.login_user(user)
 
         if login.current_user.is_authenticated:
-            app.config['process'] = Process(target=check_data)
-            if not app.config['process'].is_alive():
-                app.config['process'].start()
+            # app.config['process'] = Process(target=check_data)
+            # if not app.config['process'].is_alive():
+            #     app.config['process'].start()
             return redirect(url_for('.index'))
         # link = '<p>Don\'t have an account? <a href="' + url_for('.register_view') + '">Click here to register.</a></p>'
         self._template_args['form'] = form
@@ -157,8 +253,8 @@ class MyAdminIndexView(admin.AdminIndexView):
     @expose('/logout/')
     def logout_view(self):
         login.logout_user()
-        if app.config['process'].is_alive():
-            app.config['process'].terminate()
+        # if app.config['process'].is_alive():
+        #     app.config['process'].terminate()
         return redirect(url_for('.index'))
 
 
@@ -217,14 +313,14 @@ def build_sample_db():
     db.session.add(test_user)
 
     for i in [1, 2, 3]:
-        alertstrategy = AlertStrategy()
-        alertstrategy.name = "策略 " + str(i)
-        alertstrategy.speed_lower = str(i * 10)
-        alertstrategy.speed_upper = str(i * 10 + 10)
-        alertstrategy.vol_name = "vol_example_" + str(i) + ".mp3"
-        alertstrategy.light_name = "light_example_" + str(i) + ".txt"
-
-        db.session.add(alertstrategy)
+        # alertstrategy = AlertStrategy()
+        # alertstrategy.name = "策略 " + str(i)
+        # alertstrategy.speed_lower = str(i * 10)
+        # alertstrategy.speed_upper = str(i * 10 + 10)
+        # alertstrategy.vol_name = "vol_example_" + str(i) + ".mp3"
+        # alertstrategy.light_name = "light_example_" + str(i) + ".txt"
+        #
+        # db.session.add(alertstrategy)
 
         volfile = VolFile()
         volfile.name = "vol_example_ " + str(i)
@@ -252,5 +348,7 @@ if __name__ == '__main__':
         with app.app_context():
             build_sample_db()
 
-    app.config['process'] = Process(target=check_data)
+    # app.config['process'] = Process(target=main)
+    # app.config['process'].start()
+
     app.run(processes=1)
