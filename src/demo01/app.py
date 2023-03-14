@@ -67,10 +67,10 @@ class User(db.Model):
 
 class AlertStrategy(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.Unicode(64))
+    name = db.Column(db.Unicode(64), nullable=False)
 
-    speed_lower = db.Column(db.Unicode(64))
-    speed_upper = db.Column(db.Unicode(64))
+    speed_lower = db.Column(db.Unicode(64), nullable=False)
+    speed_upper = db.Column(db.Unicode(64), nullable=False)
 
     # vol_name = db.Column(db.Unicode(128))
     # vol_name = db.Column(db.Unicode(64), db.ForeignKey('vol_file.name'))
@@ -94,7 +94,9 @@ class AlertStrategy(db.Model):
 
 class VolFile(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.Unicode(64))
+    name = db.Column(db.Unicode(64), nullable=False)
+    type = db.Column(db.Unicode(64), nullable=False)
+    context = db.Column(db.Unicode(256))
     path = db.Column(db.Unicode(128))
 
     def __unicode__(self):
@@ -110,7 +112,7 @@ class VolFile(db.Model):
 
 class LightStrategy(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.Unicode(64))
+    name = db.Column(db.Unicode(64), nullable=False)
     period = db.Column(db.Unicode(64))
     light_on = db.Column(db.Unicode(64))
 
@@ -151,10 +153,14 @@ class AlertStrategyView(sqla.ModelView):
     # form_choices = {
     #                 'vol_name': [('bw', VolFile.name)],
     #                 }
-    form_create_rules = ['name', 'speed_lower', 'speed_upper', 'vol_rel', 'light_rel']
 
+    form_create_rules = ['name', 'speed_lower', 'speed_upper', 'vol_rel', 'light_rel']
+    form_choices = {
+        'speed_lower': [(x, x) for x in range(0, 305, 5)],
+        'speed_upper': [(x, x) for x in range(0, 305, 5)],
+    }
     can_view_details = True
-    column_list = ['name', 'vol_rel', 'light_rel']
+    column_list = ['name', 'speed_lower', 'speed_upper', 'vol_rel', 'light_rel']
     column_labels = {
         'name': '策略名称',
         'vol_rel': '关联资源1',
@@ -183,7 +189,7 @@ class LightStrategyView(sqla.ModelView):
     column_labels = {
         'name': '策略名称',
         'period': '周期',
-        'light_on': '时长'
+        'light_on': '时长',
     }
 
     # Pass additional parameters to 'path' to FileUploadField constructor
@@ -201,10 +207,15 @@ class LightStrategyView(sqla.ModelView):
 
 class VolFileView(sqla.ModelView):
     # Override form field to use Flask-Admin FileUploadField
-    column_list = ['name', 'path']
+    column_list = ['name', 'type', 'path', 'context']
+    form_choices = {
+        'type': [('context', '文本内容'), ('file', '文件')],
+    }
     column_labels = {
         'name': '资源名称',
-        'path': '资源路径'
+        'type': '资源类型',
+        'path': '资源路径',
+        'context': '文本内容'
     }
 
     form_overrides = {
@@ -214,7 +225,7 @@ class VolFileView(sqla.ModelView):
     # Pass additional parameters to 'path' to FileUploadField constructor
     form_args = {
         'path': {
-            'label': 'File',
+            'label': '音频文件',
             'base_path': file_path,
             'allow_overwrite': False
         }
@@ -322,11 +333,11 @@ def build_sample_db():
         #
         # db.session.add(alertstrategy)
 
-        volfile = VolFile()
-        volfile.name = "vol_example_ " + str(i)
-        volfile.path = "file/vol_example_2023_02_05" + str(i) + ".mp3"
-
-        db.session.add(volfile)
+        # volfile = VolFile()
+        # volfile.name = "vol_example_ " + str(i)
+        # volfile.path = "file/vol_example_2023_02_05" + str(i) + ".mp3"
+        #
+        # db.session.add(volfile)
 
         lightstrategy = LightStrategy()
         lightstrategy.name = "策略 " + str(i)

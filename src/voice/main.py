@@ -1,6 +1,5 @@
-from playsound import playsound
-from ttskit import sdk_api
+from pydub import AudioSegment
+from pydub.playback import play
 
-# playsound('./mp3file/11582.mp3')
-
-
+sound = AudioSegment.from_mp3('../demo01/files/11582.mp3')
+play(sound)
